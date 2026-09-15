@@ -119,3 +119,57 @@ button:disabled {
   color: #92400e;
   border: 2px solid #d97706;
 }
+
+.diagnose-button {
+  margin-top: 0.9rem;
+  padding: 0.45rem 1.1rem;
+  font-size: 0.9rem;
+  background: #7c2d12;
+}
+
+.diagnose-button:hover:not(:disabled) {
+  background: #9a3412;
+}
+
+.diagnosis {
+  margin-top: 1rem;
+  padding: 0.9rem 1.1rem;
+  border-radius: 0.5rem;
+  background: #fff7ed;
+  border: 2px solid #ea580c;
+  color: #7c2d12;
+  font-size: 0.95rem;
+}
+
+.diagnosis p {
+  margin: 0;
+}
+
+.diagnosis-error {
+  color: #b91c1c;
+}
+
+.candidates-head {
+  margin: 0 0 0.6rem !important;
+}
+
+.candidate-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.candidate {
+  margin: 0;
+  padding: 0.45rem 0.9rem;
+  font-size: 1rem;
+  letter-spacing: 0.08em;
+  background: #ea580c;
+}
+
+.candidate:hover:not(:disabled) {
+  background: #c2410c;
+}

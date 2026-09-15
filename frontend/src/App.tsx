@@ -1,5 +1,10 @@
 import { useMemo, useState } from "react";
-import { ApiError, verifyNumber } from "./api";
+import {
+  ApiError,
+  requestCorrections,
+  verifyNumber,
+  type CorrectionResponse,
+} from "./api";
 import {
   FIELD_LABELS,
   validateFields,
@@ -19,6 +24,14 @@ const EMPTY_FIELDS: ContainerFields = {
 type Verdict =
   | { status: "pass" }
   | { status: "fail"; actual: string; expected: string };
+
+// The "locate suspected miscopy" diagnosis is only reachable from a FAIL
+// result. Every keystroke and every new submission discards it so stale
+// candidates can never linger against edited input.
+type Diagnosis =
+  | { status: "loading" }
+  | { status: "ready"; result: CorrectionResponse }
+  | { status: "error"; message: string };
 
 interface FieldSpec {
   name: FieldName;
@@ -69,14 +82,25 @@ const FIELD_SPECS: FieldSpec[] = [
   },
 ];
 
+function splitContainerNumber(number: string): ContainerFields {
+  return {
+    ownerCode: number.slice(0, 3),
+    category: number.slice(3, 4),
+    serial: number.slice(4, 10),
+    checkDigit: number.slice(10, 11),
+  };
+}
+
 export default function App() {
   const [fields, setFields] = useState<ContainerFields>(EMPTY_FIELDS);
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [diagnosis, setDiagnosis] = useState<Diagnosis | null>(null);
 
   // Errors are recomputed live on every keystroke, and changing any field
-  // wipes the previous verdict so a stale green light can never remain.
+  // wipes the previous verdict and diagnosis so a stale green light or a
+  // stale candidate list can never remain.
   const errors: FieldErrors = useMemo(() => validateFields(fields), [fields]);
   const formValid = Object.keys(errors).length === 0;
 
@@ -85,12 +109,14 @@ export default function App() {
     setFields((previous) => ({ ...previous, [name]: value }));
     setVerdict(null);
     setSubmitError(null);
+    setDiagnosis(null);
   }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setVerdict(null);
     setSubmitError(null);
+    setDiagnosis(null);
     if (!formValid) {
       return;
     }
@@ -117,6 +143,33 @@ export default function App() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleDiagnose() {
+    setDiagnosis({ status: "loading" });
+    try {
+      const result = await requestCorrections(fields);
+      // Any response — including an empty candidate list — replaces the
+      // previous candidates outright.
+      setDiagnosis({ status: "ready", result });
+    } catch (error) {
+      setDiagnosis({
+        status: "error",
+        message:
+          error instanceof ApiError && 409 === error.status
+            ? "该箱号已通过校验，无需定位疑似抄错。"
+            : "诊断服务暂不可用，请稍后重试。",
+      });
+    }
+  }
+
+  function handlePickCandidate(number: string) {
+    // Refill all four segments from the chosen number and clear every old
+    // conclusion; resubmission then follows the normal PASS/FAIL rules.
+    setFields(splitContainerNumber(number));
+    setVerdict(null);
+    setSubmitError(null);
+    setDiagnosis(null);
   }
 
   return (
@@ -190,6 +243,63 @@ export default function App() {
               唯一期望校验位：
               <span data-testid="expected">{verdict.expected}</span>
             </p>
+            {diagnosis === null && (
+              <button
+                type="button"
+                className="diagnose-button"
+                data-testid="diagnose"
+                onClick={handleDiagnose}
+              >
+                定位疑似抄错
+              </button>
+            )}
+          </div>
+        )}
+
+        {verdict?.status === "fail" && diagnosis !== null && (
+          <div className="diagnosis" data-testid="diagnosis">
+            {diagnosis.status === "loading" && (
+              <p data-testid="diagnosis-loading">正在定位疑似抄错…</p>
+            )}
+            {diagnosis.status === "error" && (
+              <p
+                className="diagnosis-error"
+                data-testid="diagnosis-error"
+                role="alert"
+              >
+                {diagnosis.message}
+              </p>
+            )}
+            {diagnosis.status === "ready" &&
+              diagnosis.result.candidates.length === 0 && (
+                <p data-testid="no-candidates">
+                  成本预算内未找到可使实填校验位成立的候选，请重新核对箱号。
+                </p>
+              )}
+            {diagnosis.status === "ready" &&
+              diagnosis.result.candidates.length > 0 && (
+                <div data-testid="candidates">
+                  <p className="candidates-head">
+                    最低改动成本：
+                    {diagnosis.result.minimum_cost}
+                    ，点选候选回填四段后重新提交：
+                  </p>
+                  <ul className="candidate-list">
+                    {diagnosis.result.candidates.map((number) => (
+                      <li key={number}>
+                        <button
+                          type="button"
+                          className="candidate"
+                          data-testid={`candidate-${number}`}
+                          onClick={() => handlePickCandidate(number)}
+                        >
+                          {number}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
           </div>
         )}
       </section>

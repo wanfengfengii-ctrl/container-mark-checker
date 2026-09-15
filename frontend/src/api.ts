@@ -7,6 +7,11 @@ export interface VerifyResponse {
   container_number: string;
 }
 
+export interface CorrectionResponse {
+  minimum_cost: number | null;
+  candidates: string[];
+}
+
 export interface ApiFieldError {
   loc: (string | number)[];
   msg: string;
@@ -54,12 +59,7 @@ export async function verifyNumber(
   const response = await fetch("/api/verify", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      owner_code: fields.ownerCode,
-      category: fields.category,
-      serial: fields.serial,
-      check_digit: fields.checkDigit,
-    }),
+    body: JSON.stringify(toBody(fields)),
   });
 
   const body = await response.json().catch(() => null);
@@ -67,4 +67,29 @@ export async function verifyNumber(
     throw new ApiError(response.status, body);
   }
   return body as VerifyResponse;
+}
+
+export async function requestCorrections(
+  fields: ContainerFields,
+): Promise<CorrectionResponse> {
+  const response = await fetch("/api/corrections", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(toBody(fields)),
+  });
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new ApiError(response.status, body);
+  }
+  return body as CorrectionResponse;
+}
+
+function toBody(fields: ContainerFields): Record<string, string> {
+  return {
+    owner_code: fields.ownerCode,
+    category: fields.category,
+    serial: fields.serial,
+    check_digit: fields.checkDigit,
+  };
 }

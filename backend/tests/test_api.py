@@ -109,3 +109,114 @@ def test_multiple_invalid_fields_are_all_reported():
     assert ("body", "category") in locations
     assert ("body", "serial") in locations
     assert ("body", "check_digit") in locations
+
+
+CORRECTIONS_PATH = "/api/corrections"
+
+
+def test_corrections_returns_single_confusable_fix():
+    # KEMZ058631 / 8 FAILs (expected digit is 3); the unique cheapest
+    # fix is the confusable 0 -> 8 replacement at serial position 3.
+    response = client.post(
+        CORRECTIONS_PATH,
+        json={
+            "owner_code": "KEM",
+            "category": "Z",
+            "serial": "058631",
+            "check_digit": "8",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "minimum_cost": 1,
+        "candidates": ["KEMZ0506318"],
+    }
+
+
+def test_corrections_returns_every_candidate_tied_at_minimum_cost():
+    response = client.post(
+        CORRECTIONS_PATH,
+        json={
+            "owner_code": "CSQ",
+            "category": "U",
+            "serial": "571171",
+            "check_digit": "6",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["minimum_cost"] == 2
+    assert body["candidates"] == ["CSOU5711176", "SCQU5171716"]
+
+
+def test_corrections_returns_200_with_empty_list_when_no_fit():
+    response = client.post(
+        CORRECTIONS_PATH,
+        json={
+            "owner_code": "CSQ",
+            "category": "U",
+            "serial": "512311",
+            "check_digit": "6",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json() == {"minimum_cost": None, "candidates": []}
+
+
+def test_corrections_rejects_an_already_passing_number_with_409():
+    response = client.post(
+        CORRECTIONS_PATH,
+        json={
+            "owner_code": "CSQ",
+            "category": "U",
+            "serial": "305438",
+            "check_digit": "3",
+        },
+    )
+    assert response.status_code == 409
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("owner_code", "MS1"),
+        ("category", "X"),
+        ("serial", "12A456"),
+        ("check_digit", "A"),
+    ],
+)
+def test_corrections_invalid_fields_return_422_with_field_location(
+    field, value
+):
+    payload = {
+        "owner_code": "CSQ",
+        "category": "U",
+        "serial": "305438",
+        "check_digit": "8",
+    }
+    payload[field] = value
+    response = client.post(CORRECTIONS_PATH, json=payload)
+    assert response.status_code == 422
+    errors = response.json()["detail"]
+    assert any(error["loc"][-1] == field for error in errors)
+
+
+def test_corrections_kept_check_digit_is_always_valid():
+    # Every candidate returned for the canonical FAIL vector must verify.
+    response = client.post(
+        CORRECTIONS_PATH,
+        json={
+            "owner_code": "CSQ",
+            "category": "U",
+            "serial": "305438",
+            "check_digit": "8",
+        },
+    )
+    assert response.status_code == 200
+    candidates = response.json()["candidates"]
+    assert candidates  # non-empty and lexicographically sorted
+    assert candidates == sorted(candidates)
+    for number in candidates:
+        assert len(number) == 11
+        assert number[-1] == "8"
+        assert expected_check_digit(number[:3], number[3], number[4:10]) == "8"

@@ -35,3 +35,12 @@ class VerifyResult(BaseModel):
     expected_check_digit: str
     actual_check_digit: str
     container_number: str
+
+
+class CorrectionResult(BaseModel):
+    # Lowest edit-path cost at which a valid candidate exists; null when
+    # no candidate fits the budget (returned together with an empty list).
+    minimum_cost: int | None
+    # Full 11-character container numbers, lexicographically ordered,
+    # all tied at minimum_cost.
+    candidates: list[str]
