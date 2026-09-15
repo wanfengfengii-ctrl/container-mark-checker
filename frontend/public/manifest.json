@@ -1,0 +1,6 @@
+{
+  "name": "container-gate web",
+  "short_name": "gate-check",
+  "start_url": "/",
+  "display": "standalone"
+}
