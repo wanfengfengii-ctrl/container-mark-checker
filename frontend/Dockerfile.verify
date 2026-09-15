@@ -1,11 +1,22 @@
 # One-shot acceptance image: runs the Playwright suite (including the
 # direct API checks) against the compose stack, then exits.
+#
+# IMPORTANT: the image tag version MUST exactly match @playwright/test in
+# package.json. This base image ships that browser revision and sets
+# PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1, so a caret range that resolves to a
+# newer release would run the new driver against old browsers and fail
+# with "browser version mismatch". Bump both together.
 FROM mcr.microsoft.com/playwright:v1.49.1-jammy
 
 WORKDIR /app
 
 COPY package.json package-lock.json ./
 RUN npm ci
+
+# Fail the build early if the installed Playwright drifts from the browser
+# revision baked into this base image.
+RUN node -e "const v=require('playwright-core/package.json').version; \
+  if(v!=='1.49.1'){console.error('Playwright '+v+' does not match image 1.49.1 - pin @playwright/test and bump the base image together'); process.exit(1)}"
 
 COPY playwright.config.ts ./
 COPY e2e ./e2e
